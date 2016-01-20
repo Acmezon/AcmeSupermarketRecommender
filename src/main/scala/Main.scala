@@ -8,7 +8,6 @@ import org.apache.log4j.Level
 import org.apache.spark.mllib.recommendation.Rating
 import org.apache.log4j.Logger
 import java.io.File
-import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.mllib.recommendation.ALS
 
 object Main {
@@ -25,22 +24,18 @@ object Main {
 
     // set up environment
     val conf = new SparkConf()
-      .setAppName("RecommenderSystem")
+      .setAppName("AcmeSupermarketRecommender")
     val sc = new SparkContext(conf)
-    val sql = new HiveContext(sc)
-    
-    Configuration.setVariables(sql);
-    Configuration.useDatabase(sql, "recommender");
     
     // load personal ratings
 
-    val myRatingsRDD = Functions.loadMyRatings(sql, args(0).toInt)
+    val myRatingsRDD = Functions.loadUserRatings(args(0).toInt, sc)
     
-    // load ratings and movie titles
+    // load ratings and products
 
-    val ratings = Functions.loadRatings(sql)
+    val ratings = Functions.loadRatings(sc)
 
-    val movies = Functions.loadFilms(sql)
+    val products = Functions.loadProducts(sc)
 
     val numPartitions = 4
     val training = ratings.filter(x => x._1 <= 3)
@@ -85,11 +80,11 @@ object Main {
     println("The best model was trained with rank = " + bestRank + " and lambda = " + bestLambda
       + ", and numIter = " + bestNumIter + ", and its RMSE on the test set is " + testRmse + ".")
       
-    val prediction = Functions.predictForUser(bestModel.get, args(0).toInt, sql, sc).collect().sortBy(_.rating).take(10)
+    val prediction = Functions.predictForUser(bestModel.get, args(0).toInt, sc).collect().sortBy(_.rating).take(10)
     
     var index = 1;
     prediction.foreach { rating =>
-      println("%2d".format(index) + ". " + movies.get(rating.product).get)
+      println("%2d".format(index) + ". " + products.get(rating.product).get)
       index += 1
     }
     // clean up

@@ -11,6 +11,7 @@ import java.io.File
 import org.apache.spark.mllib.recommendation.ALS
 import com.mongodb.casbah.commons.MongoDBObject
 import com.mongodb.casbah.MongoClient
+import Functions._
 
 object Main {
   def main(args: Array[String]) {

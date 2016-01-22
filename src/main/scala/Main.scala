@@ -32,9 +32,13 @@ object Main {
     
     if(args(0).toInt > -1) {
       makeRecommendation(sc, args(0).toInt);
+    } else if(args.length != 2) {
+      println("If first argument is -1, there must be a second one, which will be the user_id for which the configurations will be updated or created");
+      sys.exit(1);
     } else {
-      configureParameters(sc, args(0).toInt);
+      configureParameters(sc, args(1).toInt);
     }
+
     sc.stop()
   }
 }

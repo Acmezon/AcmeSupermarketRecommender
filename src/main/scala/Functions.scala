@@ -10,6 +10,7 @@ import scala.util.Random
 import breeze.macros.expand.args
 import org.apache.spark.mllib.recommendation.ALS
 import breeze.macros.expand.args
+import com.mongodb.DBObject
 
 object Functions {
   def loadUserRatings(userId: Int, sc: SparkContext): RDD[Rating] = {
@@ -111,18 +112,16 @@ object Functions {
     val configConnection = MongoClient();
     var configColl = configConnection("Acme-Supermarket-Recommendations")("config");
    
-    val config = configColl.find().toSeq;
-    
-    if(config.length == 0) {
-      println("No hay configuraciones en la BD. Ejecuta el sistema con la id de usuario -1 para poner configucaciones.");
-      sys.exit(1);
-    }
-    
+    val config = configColl.findOne(MongoDBObject("customer_id" -> user_id)).getOrElse(configureParameters(sc, user_id));
+        
     val numPartitions = 6;
-    val rank = config(0).get("rank").toString().toInt;
-    val numIter = config(0).get("numIter").toString().toInt;
+    val rank = config.get("rank").toString().toInt;
+    val numIter = config.get("numIter").toString().toInt;
+    val lambda = config.get("lambda").toString().toDouble;
     
-    val lambda = config(0).get("numPartitions").toString().toDouble;
+    configConnection.underlying.close();
+    configColl = null;
+    
     
     // load personal ratings
     val myRatingsRDD = Functions.loadUserRatings(user_id, sc)
@@ -161,7 +160,7 @@ object Functions {
     // clean up
   }
   
-  def configureParameters(sc: SparkContext, user_id : Int) = {
+  def configureParameters(sc: SparkContext, user_id: Int) : DBObject = {
     val configConnection = MongoClient();
     var configColl = configConnection("Acme-Supermarket-Recommendations")("config");
     
@@ -205,29 +204,31 @@ object Functions {
         bestNumIter = numIter
       }
     }
-        
-    val query = MongoDBObject.empty;
-    val fields = MongoDBObject("_id" -> 1);
-    val rows = configColl.find(query, fields).toSeq;
     
     val bestValues = MongoDBObject(
+      "customer_id" -> user_id,
       "rank" -> bestRank,
       "numIter" -> bestNumIter,
       "lambda" -> bestLambda
     );
+
+    val query = MongoDBObject("customer_id" -> user_id);
+    val rows = configColl.find(query).toSeq;
+    
     if ( rows.length == 0 ){
       configColl += bestValues;
-    } else {
-      var conf_id = rows(0).get("_id").toString();
-    
-      val update_query = MongoDBObject("_id" -> conf_id);
+    } else {    
+      val update_query = MongoDBObject("customer_id" -> user_id);
       val update_fields = MongoDBObject(
         "$set" -> bestValues 
       );
       
       configColl.findAndModify(update_query, update_fields);
     }
+    
     configConnection.underlying.close();
     configColl = null;
+    
+    return bestValues;
   }
 }

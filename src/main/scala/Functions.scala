@@ -138,10 +138,13 @@ object Functions {
       
     val model = ALS.train(training, rank, numIter, lambda);
     
-    val prediction = Functions.predictForUser(model, user_id, sc).collect().sortBy(_.rating).take(10)
+    val prediction = Functions.predictForUser(model, user_id, sc).collect().sortBy(_.rating).take(20)
     
     val predictionsConnection = MongoClient();
     var predictionsColl = predictionsConnection("Acme-Supermarket-Recommendations")("recommendations");
+    
+    val removeQuery = MongoDBObject("customer_id" -> user_id);
+    predictionsColl.remove(removeQuery);
     
     prediction.foreach { rating =>
       val recommendation = MongoDBObject(

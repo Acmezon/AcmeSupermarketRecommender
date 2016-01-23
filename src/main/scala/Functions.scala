@@ -222,9 +222,7 @@ object Functions {
     val configConnection = MongoClient();
     var configColl = configConnection("Acme-Supermarket-Recommendations")("config_purchases");
    
-    var time = System.currentTimeMillis();
     val config = configColl.findOne(MongoDBObject("customer_id" -> user_id)).getOrElse(configurePurchasesParameters(sc, user_id));
-    println("Get config: " + (System.currentTimeMillis() - time) / 1000.0);
     
     
     val numPartitions = 6;
@@ -234,16 +232,12 @@ object Functions {
     
     configConnection.underlying.close();
     configColl = null;
-    
-    time = System.currentTimeMillis();
+
     // load personal purchases
     val myPurchasesRDD = Functions.loadUserPurchases(user_id, sc);
-    println("Get user purchases: " + (System.currentTimeMillis() - time) / 1000.0);
-    
-    time = System.currentTimeMillis();
+
     // load purchases and products
     val purchases = Functions.loadPurchases(sc)
-    println("Get purchases: " + (System.currentTimeMillis() - time) / 1000.0);
     
     val training = purchases.filter(x => x._1 <= 3)
       .values
@@ -251,13 +245,9 @@ object Functions {
       .repartition(numPartitions)
       .cache()
     
-    time = System.currentTimeMillis();
     val model = ALS.train(training, rank, numIter, lambda);
-    println("Training: " + (System.currentTimeMillis() - time) / 1000.0);
     
-    time = System.currentTimeMillis();
     val prediction = Functions.predictPurchasesForUser(model, user_id, sc).collect().sortBy(-_.rating).take(20)
-    println("Prediction: " + (System.currentTimeMillis() - time) / 1000.0);
     
     val predictionsConnection = MongoClient();
     var predictionsColl = predictionsConnection("Acme-Supermarket-Recommendations")("recommendations_purchase");

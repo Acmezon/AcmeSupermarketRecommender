@@ -19,9 +19,9 @@ object Main {
     Logger.getLogger("org.apache.spark").setLevel(Level.ERROR)
     Logger.getLogger("org.eclipse.jetty.server").setLevel(Level.OFF)
 
-    if (args.length != 1) {
+    if (args.length != 2) {
       println("Usage: spark-submit --driver-memory 2g --class Main " +
-        "archive-*.jar userToRecommendId")
+        "archive-*.jar action userToRecommendId")
       sys.exit(1)
     }
 
@@ -30,13 +30,14 @@ object Main {
       .setAppName("AcmeSupermarketRecommender")
     val sc = new SparkContext(conf)
     
-    if(args(0).toInt > -1) {
-      makeRecommendation(sc, args(0).toInt);
-    } else if(args.length != 2) {
-      println("If first argument is -1, there must be a second one, which will be the user_id for which the configurations will be updated or created");
-      sys.exit(1);
-    } else {
-      configureParameters(sc, args(1).toInt);
+    if(args(0).toString() == "rates") {
+      makeRatesRecommendation(sc, args(1).toInt);
+    } else if(args(0).toString() == "purchases") {
+      makePurchasesRecommendation(sc, args(1).toInt);
+    } else if(args(0).toString() == "update_rates") {
+      configureRatesParameters(sc, args(1).toInt);
+    } else if(args(0).toString() == "update_purchases") {
+      configurePurchasesParameters(sc, args(1).toInt);
     }
 
     sc.stop()

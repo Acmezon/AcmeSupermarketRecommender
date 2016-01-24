@@ -62,31 +62,17 @@ object Functions {
   
   def loadUserPurchases(userId: Int, sc: SparkContext): RDD[Rating] = {
     val mongoPurchasesConnection = MongoClient();
-    var acmeSupermarketDB = mongoPurchasesConnection("Acme-Supermarket");
+    val purchasesColl = mongoPurchasesConnection("Acme-Supermarket-Recommendations")("purchases");
     
     //Load purchases
-    val purchasesColl = acmeSupermarketDB("purchases");
-    val purchasesQuery = MongoDBObject("customer_id" -> userId);
-    val purchaseFields = MongoDBObject("_id" -> 1);
-    val purchases = purchasesColl.find(purchasesQuery, purchaseFields).map(_.get("_id").toString().toInt).toArray;
+    val query = MongoDBObject("customer_id" -> userId);
+    val rows = purchasesColl.find(query).toSeq;
     
-    //Load provides from purchase lines
-    val purchaseLineColl = acmeSupermarketDB("purchase_lines");
-    val purchaseLineQuery = MongoDBObject("purchase_id" -> MongoDBObject("$in" -> purchases));
-    val pruchaseLineFields = MongoDBObject("provide_id" -> 1);
-    val provides = purchaseLineColl.find(purchaseLineQuery, pruchaseLineFields).map(_.get("provide_id").toString().toInt).toArray;
+    val rows_rdd = sc.parallelize(rows);
     
-    //Load products from provides
-    val providesColl = acmeSupermarketDB("provide");
-    val providesQuery = MongoDBObject("_id" -> MongoDBObject("$in" -> provides));
-    val providesFields = MongoDBObject("product_id" -> 1);
-    val products = providesColl.find(providesQuery, providesFields).map(_.get("product_id").toString().toInt).toArray;
-    
-    val products_rdd = sc.parallelize(products);
-    
-    val purchased_products = products_rdd.map { purchase =>
+    val purchased_products = rows_rdd.map { row =>
       Rating(userId, 
-             purchase, 
+             row.get("product_id").toString().toInt,
              5);
     }
     mongoPurchasesConnection.underlying.close();
@@ -100,53 +86,27 @@ object Functions {
   
   def loadPurchases(sc: SparkContext): RDD[(Long, Rating)] = {
     val mongoPurchasesConnection = MongoClient();
-    var acmeSupermarketDB = mongoPurchasesConnection("Acme-Supermarket");
+    val recommenderDB = mongoPurchasesConnection("Acme-Supermarket-Recommendations");
+    val purchasesColl = recommenderDB("purchases");
     
-    //Load purchases
-    val purchasesColl = acmeSupermarketDB("purchases");
-    val purchasesQuery = MongoDBObject.empty;
-    val purchaseFields = MongoDBObject("customer_id" -> 1);
-    var purchases = scala.collection.mutable.Map[Int, Array[Int]]();
+    val customers_ids = purchasesColl.distinct("customer_id").toSeq;
+    var customer_purchases = scala.collection.mutable.Seq[Rating]();
     
-    purchasesColl.find(purchasesQuery, purchaseFields).foreach{ purchase =>
-        val customer_id = purchase.get("customer_id").toString().toInt;
-        val purchase_id = purchase.get("_id").toString().toInt;
-        
-        //Load provides from purchase lines
-        val purchaseLineColl = acmeSupermarketDB("purchase_lines");
-        val purchaseLineQuery = MongoDBObject("purchase_id" -> purchase_id);
-        val pruchaseLineFields = MongoDBObject("provide_id" -> 1);
-        
-        purchaseLineColl.find(purchaseLineQuery, pruchaseLineFields).foreach{ purchaseLine => 
-          val provide_id = purchaseLine.get("provide_id").toString().toInt;
-          
-          val providesColl = acmeSupermarketDB("provide");
-          val providesQuery = MongoDBObject("_id" -> provide_id);
-          val providesFields = MongoDBObject("product_id" -> 1);
-              
-          val provide = providesColl.findOne(providesQuery, providesFields).get;
-          val product_id = provide.get("product_id").toString().toInt;
-          
-          if(purchases.contains(customer_id) && !purchases.get(customer_id).get.contains(product_id)) {
-            val new_array = purchases.get(customer_id).get :+ product_id;
-            
-            purchases.put(customer_id, new_array);
-          } else {
-            purchases.put(customer_id, Array(product_id));
-          }
-        };
-    };
-    
-    val customers = sc.parallelize(purchases.keys.toSeq);
-        
-    val final_purchases = customers.map { customer =>
-      var r = Random;
-      val purchase = purchases.get(customer).get.map{ product => 
-        (r.nextInt(10).toLong, Rating(customer, product, 5));  
-      }
+    customers_ids.foreach { customer => 
+      val customer_id = customer.asInstanceOf[Integer];
       
-      purchase;
-    }.flatMap(array => array)
+      val query = MongoDBObject("customer_id" -> customer_id);
+      purchasesColl.find(query).foreach { purchase => 
+        customer_purchases = customer_purchases :+ 
+          Rating(customer_id, purchase.get("product_id").toString().toInt, 5) }
+    }
+    
+    val customer_purchases_rdd = sc.parallelize(customer_purchases);
+        
+    val final_purchases = customer_purchases_rdd.map { purchase =>
+      var r = Random;
+        (r.nextInt(10).toLong, purchase);
+    }
     
     println("Purchases: " + final_purchases.count());
     
